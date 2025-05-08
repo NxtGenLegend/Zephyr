@@ -1,10 +1,9 @@
-<!-- templates/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Weather Station Dashboard</title>
+    <title>GrovePi Weather Station</title>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Chart.js -->
@@ -57,7 +56,7 @@
 <body>
     <div class="container py-4">
         <header class="d-flex justify-content-between align-items-center mb-4">
-            <h1>Weather Station Dashboard <span id="status-badge" class="badge bg-secondary">Connecting...</span></h1>
+            <h1>GrovePi Weather Station <span id="status-badge" class="badge bg-secondary">Connecting...</span></h1>
             <div>
                 <span id="last-updated" class="text-muted">Updating...</span>
             </div>
@@ -67,8 +66,9 @@
         <div class="row mb-4">
             <div class="col-md-4">
                 <div class="card h-100">
-                    <div class="card-header">
+                    <div class="card-header d-flex justify-content-between">
                         <span>Temperature</span>
+                        <i class="bi bi-thermometer-half"></i>
                     </div>
                     <div class="card-body d-flex align-items-center justify-content-center">
                         <span id="current-temp" class="sensor-value">--</span>
@@ -78,8 +78,9 @@
             </div>
             <div class="col-md-4">
                 <div class="card h-100">
-                    <div class="card-header">
+                    <div class="card-header d-flex justify-content-between">
                         <span>Humidity</span>
+                        <i class="bi bi-moisture"></i>
                     </div>
                     <div class="card-body d-flex align-items-center justify-content-center">
                         <span id="current-humidity" class="sensor-value">--</span>
@@ -89,8 +90,9 @@
             </div>
             <div class="col-md-4">
                 <div class="card h-100">
-                    <div class="card-header">
+                    <div class="card-header d-flex justify-content-between">
                         <span>Light</span>
+                        <i class="bi bi-brightness-high"></i>
                     </div>
                     <div class="card-body d-flex align-items-center justify-content-center">
                         <span id="current-light" class="sensor-value">--</span>
@@ -139,8 +141,7 @@
     </div>
 
     <script>
-        // Configuration
-        const refreshInterval = {{ refresh_interval }};
+        // Chart.js instance for history chart
         let historyChart = null;
         
         // Weather icons mapping
@@ -248,16 +249,16 @@
                             responsive: true,
                             interaction: {
                                 mode: 'index',
-                                intersect: false
+                                intersect: false,
                             },
                             scales: {
                                 x: {
                                     ticks: {
                                         maxTicksLimit: 8,
                                         callback: function(value, index, values) {
+                                            // Format timestamp for display
                                             if (timestamps[index]) {
-                                                const date = new Date(timestamps[index]);
-                                                return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: true});
+                                                return timestamps[index].split(' ')[1];
                                             }
                                             return '';
                                         }
@@ -285,8 +286,7 @@
                                     callbacks: {
                                         title: function(tooltipItems) {
                                             if (tooltipItems[0] && tooltipItems[0].label) {
-                                                const date = new Date(tooltipItems[0].label);
-                                                return date.toLocaleString();
+                                                return tooltipItems[0].label;
                                             }
                                             return '';
                                         }
@@ -400,7 +400,7 @@
                                 </li>
                                 <li class="list-group-item d-flex justify-content-between align-items-center">
                                     Auto-refresh
-                                    <span class="badge bg-info rounded-pill">${refreshInterval/1000}s</span>
+                                    <span class="badge bg-info rounded-pill">5s</span>
                                 </li>
                             </ul>
                         </div>
@@ -432,12 +432,14 @@
             await fetchHistoryData();
             await fetchForecast();
             await fetchSystemStatus();
+            console.log("Dashboard updated at: " + new Date().toLocaleTimeString());
         }
 
         // Initial load
         updateAll();
         
-        // Set up periodic refresh
+        // Set up a faster periodic refresh - every 5 seconds
+        const refreshInterval = 2000; // 5 seconds in milliseconds
         setInterval(updateAll, refreshInterval);
     </script>
 </body>

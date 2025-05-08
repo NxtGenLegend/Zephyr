@@ -37,7 +37,51 @@ class WeatherServer:
         self.data_lock = threading.Lock()
         self.model = None
         self.scaler = None
+        
+        # Reset data file on startup
+        print("\n=== RESETTING DATA FILE ===")
+        with self.data_lock:
+            try:
+                # Get absolute path to DATA_FILE
+                abs_path = os.path.abspath(DATA_FILE)
+                print(f"Trying to reset file at: {abs_path}")
+                
+                # Check if file exists
+                if os.path.exists(abs_path):
+                    print(f"File exists, removing it first...")
+                    # Explicitly remove the file first
+                    os.remove(abs_path)
+                    print(f"Existing file removed")
+                
+                # Create empty CSV with just headers
+                empty_df = pd.DataFrame(columns=['timestamp', 'temperature', 'humidity', 'light'])
+                empty_df.to_csv(abs_path, index=False, mode='w')
+                print(f"✅ Data file {abs_path} has been reset")
+                
+                # Verify the file was created correctly
+                if os.path.exists(abs_path):
+                    file_size = os.path.getsize(abs_path)
+                    print(f"New file size: {file_size} bytes")
+                else:
+                    print("⚠️ Warning: File was not created!")
+                    
+            except Exception as e:
+                print(f"❌ Error resetting data file: {e}")
+                import traceback
+                print(traceback.format_exc())
+        
+        # Load model if it exists
         self.load_model()
+
+    def get_all_data(self):
+        """Get all data from the CSV file"""
+        try:
+            if os.path.exists(DATA_FILE):
+                return pd.read_csv(DATA_FILE)
+            return pd.DataFrame()
+        except Exception as e:
+            logging.error(f"Error reading data file: {e}")
+            return pd.DataFrame()
         
     def load_model(self):
         """Load the trained model if it exists"""
@@ -54,17 +98,52 @@ class WeatherServer:
     def save_data(self, data_points):
         """Save received data points to CSV file"""
         with self.data_lock:
-            file_exists = os.path.exists(DATA_FILE)
-            
-            df = pd.DataFrame(data_points)
-            
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
-            
-            mode = 'a' if file_exists else 'w'
-            header = not file_exists
-            df.to_csv(DATA_FILE, mode=mode, header=header, index=False)
-            
-            logging.info(f"Saved {len(data_points)} data points to {DATA_FILE}")
+            try:
+                # Make sure data_points is a list, even if it's a single reading
+                if not isinstance(data_points, list):
+                    data_points = [data_points]
+                
+                # Convert all readings to proper format
+                formatted_data = []
+                for reading in data_points:
+                    if isinstance(reading, dict):
+                        # Ensure all required fields exist
+                        reading_copy = {
+                            'timestamp': reading.get('timestamp', datetime.now().isoformat()),
+                            'temperature': float(reading.get('temperature', 20.0)),
+                            'humidity': float(reading.get('humidity', 50.0)),
+                            'light': float(reading.get('light', 100.0))
+                        }
+                        formatted_data.append(reading_copy)
+                
+                # Skip if no valid readings
+                if not formatted_data:
+                    logging.warning("No valid data points to save")
+                    return
+                    
+                # Create DataFrame
+                df = pd.DataFrame(formatted_data)
+                
+                # Ensure timestamp is properly parsed
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                
+                # Check if file exists
+                file_exists = os.path.exists(DATA_FILE)
+                
+                # Write to CSV
+                mode = 'a' if file_exists else 'w'
+                header = not file_exists
+                
+                # Use context manager to ensure file is closed
+                with open(DATA_FILE, mode='a' if file_exists else 'w', newline='') as f:
+                    df.to_csv(f, header=header, index=False)
+                
+                logging.info(f"Successfully saved {len(formatted_data)} data points to {DATA_FILE}")
+                
+            except Exception as e:
+                logging.error(f"Error saving data: {e}")
+                import traceback
+                logging.error(traceback.format_exc())
     
     def create_features(self, df):
         """Create time-based features for the weather model"""
@@ -254,31 +333,57 @@ class WeatherServer:
                     continue
             
             if data:
-                sensor_data = json.loads(data.decode('utf-8'))
-                logging.info(f"Received {len(sensor_data)} readings from client")
-                
-                self.save_data(sensor_data)
-                
-                model_updated = False
-                if len(sensor_data) >= 10:  # Only retrain if we got significant new data
-                    model_updated = self.train_model()
-                
-                weather_forecast = self.predict_weather(hours_ahead=12)
-                
-                response = {
-                    'status': 'SUCCESS',
-                    'message': f'Received {len(sensor_data)} readings',
-                    'model_updated': model_updated
-                }
-                
-                if weather_forecast:
-                    response['forecast'] = weather_forecast[:3]  # Send back just next 3 hours
-                
-                conn.sendall(json.dumps(response).encode('utf-8'))
+                # Parse the received JSON data
+                try:
+                    sensor_data = json.loads(data.decode('utf-8'))
+                    
+                    # Check if it's a single reading (dict) or multiple readings (list)
+                    if isinstance(sensor_data, dict):
+                        logging.info(f"Received a single reading from {addr}")
+                        print("Single data received")
+                        # Convert to list for consistent handling
+                        sensor_data = [sensor_data]
+                        
+                    logging.info(f"Processing {len(sensor_data)} readings from {addr}")
+                    
+                    # Save the data
+                    self.save_data(sensor_data)
+                    
+                    # Only retrain model occasionally
+                    model_updated = False
+                    if len(self.get_all_data()) % 100 == 0:  # Every 10 readings
+                        model_updated = self.train_model()
+                    
+                    # Make prediction
+                    weather_forecast = self.predict_weather(hours_ahead=12)
+                    
+                    # Prepare response
+                    response = {
+                        'status': 'SUCCESS',
+                        'message': f'Received {len(sensor_data)} readings',
+                        'model_updated': model_updated
+                    }
+                    
+                    if weather_forecast:
+                        response['forecast'] = weather_forecast[:3]  # Send back just next 3 hours
+                    
+                    # Send response
+                    conn.sendall(json.dumps(response).encode('utf-8'))
+                    
+                except json.JSONDecodeError as e:
+                    logging.error(f"Invalid JSON from {addr}: {e}")
+                    conn.sendall(json.dumps({'status': 'ERROR', 'message': f'Invalid JSON: {str(e)}'}).encode('utf-8'))
+                    
+            else:
+                logging.warning(f"Empty data received from {addr}")
+                conn.sendall(json.dumps({'status': 'ERROR', 'message': 'Empty data received'}).encode('utf-8'))
                 
         except Exception as e:
-            logging.error(f"Error handling client: {e}")
-            conn.sendall(json.dumps({'status': 'ERROR', 'message': str(e)}).encode('utf-8'))
+            logging.error(f"Error handling client {addr}: {e}")
+            try:
+                conn.sendall(json.dumps({'status': 'ERROR', 'message': str(e)}).encode('utf-8'))
+            except:
+                pass
         finally:
             conn.close()
     
