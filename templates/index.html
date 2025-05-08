@@ -141,10 +141,8 @@
     </div>
 
     <script>
-        // Chart.js instance for history chart
         let historyChart = null;
         
-        // Weather icons mapping
         const weatherIcons = {
             0: "☀️", // Sunny
             1: "🌤️", // Partly Cloudy
@@ -153,7 +151,6 @@
             4: "🌧️"  // Heavy Rain
         };
 
-        // Function to fetch current readings
         async function fetchCurrentReadings() {
             try {
                 const response = await fetch('/api/current');
@@ -164,13 +161,11 @@
                     return;
                 }
                 
-                // Update the UI
                 document.getElementById('current-temp').textContent = data.temperature;
                 document.getElementById('current-humidity').textContent = data.humidity;
                 document.getElementById('current-light').textContent = data.light;
                 document.getElementById('last-updated').textContent = `Last updated: ${data.last_updated}`;
                 
-                // Update status badge
                 document.getElementById('status-badge').className = 'badge bg-success';
                 document.getElementById('status-badge').textContent = 'Online';
                 
@@ -181,7 +176,6 @@
             }
         }
 
-        // Function to fetch and update the history chart
         async function fetchHistoryData() {
             try {
                 const response = await fetch('/api/history');
@@ -192,13 +186,11 @@
                     return;
                 }
                 
-                // Extract data for the chart
                 const timestamps = data.map(item => item.timestamp);
                 const temperatures = data.map(item => item.temperature);
                 const humidities = data.map(item => item.humidity);
                 const lightLevels = data.map(item => item.light);
                 
-                // Create or update the chart
                 if (historyChart) {
                     historyChart.data.labels = timestamps;
                     historyChart.data.datasets[0].data = temperatures;
@@ -302,7 +294,6 @@
             }
         }
 
-        // Function to fetch and display weather forecast
         async function fetchForecast() {
             try {
                 const response = await fetch('/api/forecast');
@@ -319,14 +310,11 @@
                     `;
                     return;
                 }
-                
-                // Clear container
+               
                 forecastContainer.innerHTML = '';
                 
-                // Show only next 12 hours (or fewer if that's all we have)
                 const hoursToShow = Math.min(12, data.length);
-                
-                // Create forecast cards
+               
                 for (let i = 0; i < hoursToShow; i++) {
                     const forecast = data[i];
                     const card = document.createElement('div');
@@ -357,15 +345,13 @@
             }
         }
 
-        // Function to fetch system status
         async function fetchSystemStatus() {
             try {
                 const response = await fetch('/api/status');
                 const data = await response.json();
                 
                 const statusContainer = document.getElementById('status-container');
-                
-                // Build the status information HTML
+             
                 let statusHTML = '';
                 
                 if (data.data_available) {
@@ -426,7 +412,6 @@
             }
         }
 
-        // Function to update all data
         async function updateAll() {
             await fetchCurrentReadings();
             await fetchHistoryData();
@@ -435,11 +420,9 @@
             console.log("Dashboard updated at: " + new Date().toLocaleTimeString());
         }
 
-        // Initial load
         updateAll();
         
-        // Set up a faster periodic refresh - every 5 seconds
-        const refreshInterval = 2000; // 5 seconds in milliseconds
+        const refreshInterval = 2000; // 5 seconds refresh interval
         setInterval(updateAll, refreshInterval);
     </script>
 </body>

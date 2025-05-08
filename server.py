@@ -16,14 +16,12 @@ logging.basicConfig(level=logging.INFO,
                    format='%(asctime)s - %(levelname)s - %(message)s',
                    filename='weather_server.log')
 
-# Server configuration
 HOST = '0.0.0.0'  # Listen on all interfaces
 PORT = 12345
 DATA_FILE = 'sensor_data.csv'
 MODEL_FILE = 'weather_model.pkl'
 SCALER_FILE = 'scaler.pkl'
 
-# Weather conditions mapping
 WEATHER_CONDITIONS = {
     0: "Clear/Sunny",
     1: "Partly Cloudy",
@@ -42,23 +40,18 @@ class WeatherServer:
         print("\n=== RESETTING DATA FILE ===")
         with self.data_lock:
             try:
-                # Get absolute path to DATA_FILE
                 abs_path = os.path.abspath(DATA_FILE)
                 print(f"Trying to reset file at: {abs_path}")
                 
-                # Check if file exists
                 if os.path.exists(abs_path):
                     print(f"File exists, removing it first...")
-                    # Explicitly remove the file first
                     os.remove(abs_path)
                     print(f"Existing file removed")
-                
-                # Create empty CSV with just headers
+
                 empty_df = pd.DataFrame(columns=['timestamp', 'temperature', 'humidity', 'light'])
                 empty_df.to_csv(abs_path, index=False, mode='w')
                 print(f"✅ Data file {abs_path} has been reset")
-                
-                # Verify the file was created correctly
+
                 if os.path.exists(abs_path):
                     file_size = os.path.getsize(abs_path)
                     print(f"New file size: {file_size} bytes")
@@ -70,7 +63,6 @@ class WeatherServer:
                 import traceback
                 print(traceback.format_exc())
         
-        # Load model if it exists
         self.load_model()
 
     def get_all_data(self):
@@ -99,15 +91,12 @@ class WeatherServer:
         """Save received data points to CSV file"""
         with self.data_lock:
             try:
-                # Make sure data_points is a list, even if it's a single reading
                 if not isinstance(data_points, list):
                     data_points = [data_points]
-                
-                # Convert all readings to proper format
+
                 formatted_data = []
                 for reading in data_points:
                     if isinstance(reading, dict):
-                        # Ensure all required fields exist
                         reading_copy = {
                             'timestamp': reading.get('timestamp', datetime.now().isoformat()),
                             'temperature': float(reading.get('temperature', 20.0)),
@@ -116,25 +105,19 @@ class WeatherServer:
                         }
                         formatted_data.append(reading_copy)
                 
-                # Skip if no valid readings
                 if not formatted_data:
                     logging.warning("No valid data points to save")
                     return
                     
-                # Create DataFrame
                 df = pd.DataFrame(formatted_data)
                 
-                # Ensure timestamp is properly parsed
                 df['timestamp'] = pd.to_datetime(df['timestamp'])
                 
-                # Check if file exists
                 file_exists = os.path.exists(DATA_FILE)
-                
-                # Write to CSV
+              
                 mode = 'a' if file_exists else 'w'
                 header = not file_exists
                 
-                # Use context manager to ensure file is closed
                 with open(DATA_FILE, mode='a' if file_exists else 'w', newline='') as f:
                     df.to_csv(f, header=header, index=False)
                 
@@ -224,7 +207,7 @@ class WeatherServer:
             X_scaled = self.scaler.fit_transform(X)
             
             self.model = RandomForestRegressor(
-                n_estimators=50,  # Lightweight - using only 50 trees
+                n_estimators=50, 
                 max_depth=10,
                 min_samples_split=5,
                 random_state=42
@@ -333,31 +316,24 @@ class WeatherServer:
                     continue
             
             if data:
-                # Parse the received JSON data
                 try:
                     sensor_data = json.loads(data.decode('utf-8'))
-                    
-                    # Check if it's a single reading (dict) or multiple readings (list)
+
                     if isinstance(sensor_data, dict):
                         logging.info(f"Received a single reading from {addr}")
                         print("Single data received")
-                        # Convert to list for consistent handling
                         sensor_data = [sensor_data]
                         
                     logging.info(f"Processing {len(sensor_data)} readings from {addr}")
                     
-                    # Save the data
                     self.save_data(sensor_data)
                     
-                    # Only retrain model occasionally
                     model_updated = False
-                    if len(self.get_all_data()) % 100 == 0:  # Every 10 readings
+                    if len(self.get_all_data()) % 100 == 0:  
                         model_updated = self.train_model()
                     
-                    # Make prediction
                     weather_forecast = self.predict_weather(hours_ahead=12)
                     
-                    # Prepare response
                     response = {
                         'status': 'SUCCESS',
                         'message': f'Received {len(sensor_data)} readings',
@@ -365,7 +341,7 @@ class WeatherServer:
                     }
                     
                     if weather_forecast:
-                        response['forecast'] = weather_forecast[:3]  # Send back just next 3 hours
+                        response['forecast'] = weather_forecast[:3] 
                     
                     # Send response
                     conn.sendall(json.dumps(response).encode('utf-8'))

@@ -6,7 +6,6 @@ from datetime import datetime
 import logging
 import sys
 
-# GrovePi specific imports
 try:
     import grovepi
     from grovepi import dht
@@ -15,51 +14,42 @@ except ImportError:
     print("GrovePi library not found, running in simulation mode")
     SIMULATION = True
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, 
                    format='%(asctime)s - %(levelname)s - %(message)s',
                    filename='rpi_sensor_client.log')
 
-# Server configuration
-SERVER_HOST = '192.168.130.103'  # Replace with your Mac's IP address
+SERVER_HOST = '192.168.130.103'  # Mac IP Address
 SERVER_PORT = 12345
 SEND_INTERVAL = 2  # seconds between readings
 
-# Pin configuration for GrovePi sensors
-DHT_SENSOR_PIN = 4      # Connect DHT to D4
-LIGHT_SENSOR_PIN = 0    # Connect Light sensor to A0
+DHT_SENSOR_PIN = 4      # DHT to D4
+LIGHT_SENSOR_PIN = 0    # Light sensor to A0
 
 def read_sensors():
     """Read data from GrovePi sensors"""
     if not SIMULATION:
         try:
-            # Set pin modes
             grovepi.pinMode(LIGHT_SENSOR_PIN, "INPUT")
             
-            # Read temperature & humidity
             [temperature, humidity] = dht(DHT_SENSOR_PIN, 0)
             
-            # If sensor reading failed, try again
             attempts = 0
             while (temperature == 0 and humidity == 0) and attempts < 3:
                 time.sleep(1)
                 [temperature, humidity] = dht(DHT_SENSOR_PIN, 0)
                 attempts += 1
             
-            # Read light sensor
             light = grovepi.analogRead(LIGHT_SENSOR_PIN)
-            light_lux = light * 5.0 / 1023.0 * 800  # Approximate conversion
+            light_lux = light * 5.0 / 1023.0 * 800
             
         except Exception as e:
             logging.error(f"Error reading GrovePi sensors: {e}")
             return None
     else:
-        # Simulated values
         temperature = 20 + np.random.normal(0, 3)  # °C
         humidity = 60 + np.random.normal(0, 10)    # %
         light_lux = max(0, 200 + np.random.normal(0, 100))  # lux
     
-    # Format reading
     reading = {
         'timestamp': datetime.now().isoformat(),
         'temperature': float(temperature),
@@ -78,7 +68,6 @@ def send_data(reading):
             data_json = json.dumps(reading)
             s.sendall(data_json.encode('utf-8'))
             
-            # Wait for acknowledgment with timeout
             s.settimeout(5)
             try:
                 ack = s.recv(1024).decode('utf-8')
@@ -95,14 +84,11 @@ def main():
     
     while True:
         try:
-            # Take a reading
             reading = read_sensors()
             
-            # Send it immediately (no buffering)
             if reading:
                 send_data(reading)
                 print("Sending data") 
-            # Wait until next interval
             time.sleep(SEND_INTERVAL)
             
         except KeyboardInterrupt:
