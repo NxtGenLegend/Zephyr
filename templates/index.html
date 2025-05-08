@@ -1,0 +1,444 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Station Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+        }
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            border: none;
+        }
+        .card-header {
+            background-color: #ffffff;
+            border-bottom: 1px solid #eaedf3;
+            font-weight: 600;
+            border-radius: 10px 10px 0 0 !important;
+        }
+        .sensor-value {
+            font-size: 2.2rem;
+            font-weight: 700;
+        }
+        .sensor-unit {
+            font-size: 1rem;
+            color: #6c757d;
+        }
+        .weather-icon {
+            font-size: 2.5rem;
+            margin-right: 10px;
+        }
+        .forecast-item {
+            transition: transform 0.2s;
+        }
+        .forecast-item:hover {
+            transform: translateY(-5px);
+        }
+        #status-badge {
+            margin-left: 10px;
+        }
+        .weather-0 { background-color: #ffeb3b; } /* Sunny */
+        .weather-1 { background-color: #b3e5fc; } /* Partly Cloudy */
+        .weather-2 { background-color: #90a4ae; } /* Cloudy */
+        .weather-3 { background-color: #81d4fa; } /* Light Rain */
+        .weather-4 { background-color: #4fc3f7; } /* Heavy Rain */
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <header class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Weather Station Dashboard <span id="status-badge" class="badge bg-secondary">Connecting...</span></h1>
+            <div>
+                <span id="last-updated" class="text-muted">Updating...</span>
+            </div>
+        </header>
+
+        <!-- Current Readings -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <span>Temperature</span>
+                    </div>
+                    <div class="card-body d-flex align-items-center justify-content-center">
+                        <span id="current-temp" class="sensor-value">--</span>
+                        <span class="sensor-unit">°C</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <span>Humidity</span>
+                    </div>
+                    <div class="card-body d-flex align-items-center justify-content-center">
+                        <span id="current-humidity" class="sensor-value">--</span>
+                        <span class="sensor-unit">%</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <span>Light</span>
+                    </div>
+                    <div class="card-body d-flex align-items-center justify-content-center">
+                        <span id="current-light" class="sensor-value">--</span>
+                        <span class="sensor-unit">lux</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">Sensor History (Last 48 Hours)</div>
+                    <div class="card-body">
+                        <canvas id="historyChart" height="250"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Weather Forecast -->
+        <div class="card mb-4">
+            <div class="card-header">Weather Forecast (Next 24 Hours)</div>
+            <div class="card-body">
+                <div id="forecast-container" class="row">
+                    <div class="col-12 text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading forecast data...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Status -->
+        <div class="card">
+            <div class="card-header">System Status</div>
+            <div class="card-body">
+                <div class="row" id="status-container">
+                    <p>Connecting to server...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const refreshInterval = {{ refresh_interval }};
+        let historyChart = null;
+        
+        // Weather icons mapping
+        const weatherIcons = {
+            0: "☀️", // Sunny
+            1: "🌤️", // Partly Cloudy
+            2: "☁️", // Cloudy
+            3: "🌦️", // Light Rain
+            4: "🌧️"  // Heavy Rain
+        };
+
+        // Function to fetch current readings
+        async function fetchCurrentReadings() {
+            try {
+                const response = await fetch('/api/current');
+                const data = await response.json();
+                
+                if (data.error) {
+                    console.error('Error fetching current data:', data.error);
+                    return;
+                }
+                
+                // Update the UI
+                document.getElementById('current-temp').textContent = data.temperature;
+                document.getElementById('current-humidity').textContent = data.humidity;
+                document.getElementById('current-light').textContent = data.light;
+                document.getElementById('last-updated').textContent = `Last updated: ${data.last_updated}`;
+                
+                // Update status badge
+                document.getElementById('status-badge').className = 'badge bg-success';
+                document.getElementById('status-badge').textContent = 'Online';
+                
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('status-badge').className = 'badge bg-danger';
+                document.getElementById('status-badge').textContent = 'Offline';
+            }
+        }
+
+        // Function to fetch and update the history chart
+        async function fetchHistoryData() {
+            try {
+                const response = await fetch('/api/history');
+                const data = await response.json();
+                
+                if (data.error) {
+                    console.error('Error fetching history data:', data.error);
+                    return;
+                }
+                
+                // Extract data for the chart
+                const timestamps = data.map(item => item.timestamp);
+                const temperatures = data.map(item => item.temperature);
+                const humidities = data.map(item => item.humidity);
+                const lightLevels = data.map(item => item.light);
+                
+                // Create or update the chart
+                if (historyChart) {
+                    historyChart.data.labels = timestamps;
+                    historyChart.data.datasets[0].data = temperatures;
+                    historyChart.data.datasets[1].data = humidities;
+                    historyChart.data.datasets[2].data = lightLevels;
+                    historyChart.update();
+                } else {
+                    const ctx = document.getElementById('historyChart').getContext('2d');
+                    historyChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: timestamps,
+                            datasets: [
+                                {
+                                    label: 'Temperature (°C)',
+                                    data: temperatures,
+                                    borderColor: 'rgba(255, 99, 132, 1)',
+                                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                                    tension: 0.4,
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    pointHoverRadius: 5
+                                },
+                                {
+                                    label: 'Humidity (%)',
+                                    data: humidities,
+                                    borderColor: 'rgba(54, 162, 235, 1)',
+                                    backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                                    tension: 0.4,
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    pointHoverRadius: 5
+                                },
+                                {
+                                    label: 'Light (lux)',
+                                    data: lightLevels,
+                                    borderColor: 'rgba(255, 206, 86, 1)',
+                                    backgroundColor: 'rgba(255, 206, 86, 0.1)',
+                                    tension: 0.4,
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    pointHoverRadius: 5,
+                                    yAxisID: 'y1'
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            interaction: {
+                                mode: 'index',
+                                intersect: false
+                            },
+                            scales: {
+                                x: {
+                                    ticks: {
+                                        maxTicksLimit: 8,
+                                        callback: function(value, index, values) {
+                                            if (timestamps[index]) {
+                                                const date = new Date(timestamps[index]);
+                                                return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', hour12: true});
+                                            }
+                                            return '';
+                                        }
+                                    }
+                                },
+                                y: {
+                                    title: {
+                                        display: true,
+                                        text: 'Temperature (°C) / Humidity (%)'
+                                    }
+                                },
+                                y1: {
+                                    position: 'right',
+                                    title: {
+                                        display: true,
+                                        text: 'Light (lux)'
+                                    },
+                                    grid: {
+                                        drawOnChartArea: false
+                                    }
+                                }
+                            },
+                            plugins: {
+                                tooltip: {
+                                    callbacks: {
+                                        title: function(tooltipItems) {
+                                            if (tooltipItems[0] && tooltipItems[0].label) {
+                                                const date = new Date(tooltipItems[0].label);
+                                                return date.toLocaleString();
+                                            }
+                                            return '';
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        // Function to fetch and display weather forecast
+        async function fetchForecast() {
+            try {
+                const response = await fetch('/api/forecast');
+                const data = await response.json();
+                
+                const forecastContainer = document.getElementById('forecast-container');
+                
+                if (data.error) {
+                    forecastContainer.innerHTML = `
+                        <div class="col-12 text-center py-4">
+                            <p class="text-muted mb-0">${data.error}</p>
+                            <p class="text-muted">More data points are needed for prediction.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Clear container
+                forecastContainer.innerHTML = '';
+                
+                // Show only next 12 hours (or fewer if that's all we have)
+                const hoursToShow = Math.min(12, data.length);
+                
+                // Create forecast cards
+                for (let i = 0; i < hoursToShow; i++) {
+                    const forecast = data[i];
+                    const card = document.createElement('div');
+                    card.className = `col-md-2 col-sm-4 col-6 mb-3`;
+                    
+                    card.innerHTML = `
+                        <div class="card forecast-item h-100">
+                            <div class="card-header text-center p-2">
+                                ${forecast.hour}
+                            </div>
+                            <div class="card-body text-center p-2 weather-${forecast.condition_index}">
+                                <div class="weather-icon">${weatherIcons[forecast.condition_index]}</div>
+                                <div>${forecast.condition}</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    forecastContainer.appendChild(card);
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('forecast-container').innerHTML = `
+                    <div class="col-12 text-center py-4">
+                        <p class="text-muted">Unable to load forecast data.</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Function to fetch system status
+        async function fetchSystemStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                const statusContainer = document.getElementById('status-container');
+                
+                // Build the status information HTML
+                let statusHTML = '';
+                
+                if (data.data_available) {
+                    statusHTML += `
+                        <div class="col-md-6">
+                            <ul class="list-group">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Data Points
+                                    <span class="badge bg-primary rounded-pill">${data.data_points}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    First Reading
+                                    <span>${data.first_reading}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Last Reading
+                                    <span>${data.last_reading}</span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <ul class="list-group">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Model Available
+                                    <span class="badge ${data.model_available ? 'bg-success' : 'bg-warning'} rounded-pill">
+                                        ${data.model_available ? 'Yes' : 'No'}
+                                    </span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Server Time
+                                    <span>${data.server_time}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Auto-refresh
+                                    <span class="badge bg-info rounded-pill">${refreshInterval/1000}s</span>
+                                </li>
+                            </ul>
+                        </div>
+                    `;
+                } else {
+                    statusHTML = `
+                        <div class="col-12 text-center py-4">
+                            <p class="text-warning mb-2">No data available yet.</p>
+                            <p class="text-muted">Waiting for sensor readings from Raspberry Pi.</p>
+                        </div>
+                    `;
+                }
+                
+                statusContainer.innerHTML = statusHTML;
+                
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('status-container').innerHTML = `
+                    <div class="col-12 text-center py-4">
+                        <p class="text-danger">Unable to connect to server.</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Function to update all data
+        async function updateAll() {
+            await fetchCurrentReadings();
+            await fetchHistoryData();
+            await fetchForecast();
+            await fetchSystemStatus();
+        }
+
+        // Initial load
+        updateAll();
+        
+        // Set up periodic refresh
+        setInterval(updateAll, refreshInterval);
+    </script>
+</body>
+</html>
