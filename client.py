@@ -4,15 +4,14 @@ import json
 import numpy as np
 from datetime import datetime
 import logging
+import sys
 
-# For Raspberry Pi sensors
 try:
-    import board
-    import adafruit_dht
-    import adafruit_tsl2591  # Light sensor
+    import grovepi
+    from grovepi import dht
     SIMULATION = False
 except ImportError:
-    print("Adafruit libraries not found, running in simulation mode")
+    print("GrovePi library not found, running in simulation mode")
     SIMULATION = True
 
 logging.basicConfig(level=logging.INFO, 
@@ -24,50 +23,72 @@ SERVER_PORT = 12345
 SEND_INTERVAL = 60  
 BATCH_SIZE = 10  
 
+DHT_SENSOR_PIN = 4      
+LIGHT_SENSOR_PIN = 0    
+
 class SensorClient:
     def __init__(self):
         self.data_buffer = []
         self.setup_sensors()
         
     def setup_sensors(self):
-        """Initialize the sensors"""
+        """Initialize the GrovePi sensors"""
         if not SIMULATION:
-            # Setup the DHT22 temp/humidity sensor
-            self.dht_sensor = adafruit_dht.DHT22(board.D4)
-            
-            # Setup the TSL2591 light sensor
-            i2c = board.I2C()
-            self.light_sensor = adafruit_tsl2591.TSL2591(i2c)
-            
-            logging.info("Hardware sensors initialized")
+            try:
+                grovepi.pinMode(LIGHT_SENSOR_PIN, "INPUT")
+                
+                # For DHT sensor, no specific pinMode needed
+                # Optional: Set I2C address if needed
+                # grovepi.set_bus("RPI_1")
+                
+                logging.info("GrovePi sensors initialized")
+            except Exception as e:
+                logging.error(f"Error initializing GrovePi: {e}")
+                if "Permission denied" in str(e):
+                    logging.error("Permission error. Try running with sudo")
+                    sys.exit(1)
         else:
             logging.info("Using simulated sensors")
     
     def read_sensors(self):
-        """Read data from all sensors"""
+        """Read data from GrovePi sensors"""
         if not SIMULATION:
             try:
-                temperature = self.dht_sensor.temperature
-                humidity = self.dht_sensor.humidity
-                light = self.light_sensor.lux
+                # Read from DHT sensor (temperature & humidity)
+                # DHT spec is [temp, hum] = dht(pin, dht_type)
+                # dht_type: 0 for blue DHT, 1 for white DHT (DHT Pro)
+                [temperature, humidity] = dht(DHT_SENSOR_PIN, 0)  # 0 for DHT11/DHT22
+                
+                attempts = 0
+                while (temperature == 0 and humidity == 0) and attempts < 3:
+                    time.sleep(1)
+                    [temperature, humidity] = dht(DHT_SENSOR_PIN, 0)
+                    attempts += 1
+                
+                light = grovepi.analogRead(LIGHT_SENSOR_PIN)
+                
+                # Convert raw light reading (0-1023) to lux (approximate)
+                light_voltage = light * 5.0 / 1023.0
+                light_lux = light_voltage * 800  # Approximate conversion for Grove Light Sensor
+                
             except Exception as e:
-                logging.error(f"Error reading sensors: {e}")
+                logging.error(f"Error reading GrovePi sensors: {e}")
                 return None
         else:
             temperature = 20 + np.random.normal(0, 3)  # °C
             humidity = 60 + np.random.normal(0, 10)    # %
-            light = max(0, 200 + np.random.normal(0, 100))  # lux
+            light_lux = max(0, 200 + np.random.normal(0, 100))  # lux
             
-            if light > 300:  # Sunny
+            if light_lux > 300:  # Sunny
                 temperature += 2
                 humidity -= 5
-            elif light < 50:  # Dark/cloudy
+            elif light_lux < 50:  # Dark/cloudy
                 temperature -= 1
                 humidity += 5
         
         temperature = max(-10, min(40, temperature))
         humidity = max(0, min(100, humidity))
-        light = max(0, light)
+        light_lux = max(0, light_lux)
         
         timestamp = datetime.now().isoformat()
         
@@ -75,10 +96,10 @@ class SensorClient:
             'timestamp': timestamp,
             'temperature': float(temperature),
             'humidity': float(humidity),
-            'light': float(light)
+            'light': float(light_lux)
         }
         
-        logging.info(f"Sensor reading: Temp={temperature:.1f}°C, Humidity={humidity:.1f}%, Light={light:.1f} lux")
+        logging.info(f"Sensor reading: Temp={temperature:.1f}°C, Humidity={humidity:.1f}%, Light={light_lux:.1f} lux")
         return reading
     
     def send_data(self):
@@ -106,7 +127,7 @@ class SensorClient:
     
     def run(self):
         """Main loop to collect and send data"""
-        logging.info("Starting sensor data collection")
+        logging.info("Starting GrovePi sensor data collection")
         
         while True:
             try:
