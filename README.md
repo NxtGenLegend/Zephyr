@@ -26,7 +26,7 @@ Instructions:
 
 3. Configuration:
    - Update SERVER_HOST in client.py with your computer's IP address
-   - Ensure ports 12345 (TCP server) and 5000 (Flask app) are accessible
+   - Ensure ports 12345 and 5000 (TCP server and Flask app respectively) are accessible
 
 4. Execution (in this order):
    - On your computer, start the TCP server:
